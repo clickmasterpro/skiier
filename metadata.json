@@ -1,0 +1,6 @@
+{
+  "name": "Go Skiing",
+  "description": "Retro skiing arcade challenge featuring interactive jumps, slope, accelerometer steer, and live customisation options.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
