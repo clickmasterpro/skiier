@@ -18,6 +18,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import android.graphics.Bitmap
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.LinearGradient
+import android.graphics.Shader
 import java.io.OutputStream
 
 sealed class Screen {
@@ -115,7 +121,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     // Physics constants
     private var verticalV = 0f
-    private val gravity = 0.9f // gravity pulling skier down
+    private val gravity = 0.55f // floaty gravity pulling skier down
     private var swipeAccelerationFactor = 1.0f
     private var currentGameJob: Job? = null
     private var timerJob: Job? = null
@@ -221,7 +227,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
         // Scroll Trees backdrop seamlessly (repeating patterns)
         val deltaScroll = 4.5f * finalSpeedMultiplier
-        _treesOffset.value = (_treesOffset.value + deltaScroll) % 800f
+        _treesOffset.value = (_treesOffset.value + deltaScroll) % 220f // matches treeSpacing for perfectly seamless scroll
 
         // Handle jump vertical offset
         if (_skierJumpY.value > 0f || verticalV != 0f) {
@@ -285,7 +291,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         // Obstacle Collision Check
         if (!_isInvincible.value) {
             _obstacles.value.firstOrNull { obs ->
-                Math.abs(obs.x - skierX) < 32f && skierY < 24f
+                Math.abs(obs.x - skierX) < 32f && skierY < obs.heightDp
             }?.let {
                 // Collided! Trigger game over
                 triggerGameOver()
@@ -322,7 +328,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     fun makeSkierJump() {
         if (_isPaused.value || !_isPlaying.value) return
         if (_skierJumpY.value == 0f) { // Can only jump if on the ground
-            verticalV = 8.5f // jump force upward
+            verticalV = 13.5f // powerful jump force upward to clear obstacles
             _skierJumpY.value = 0.5f // kick-off ground
             soundManager.playJump()
         }
@@ -453,15 +459,20 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         cancelLongPress()
     }
 
-    // Create a physical mock media file in the user's photos/movies gallery so they can play it back
+    // Create a physical mock media file in the user's photos/movies gallery, AND a beautiful high-res Visual Highlight Card!
     private fun saveSimulatedScreenRecording() {
+        val finalCoins = _coinsCollected.value
+        val finalDur = _elapsedSeconds.value
+        val playerNameVal = _playerName.value.ifBlank { "Rider" }
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val finalName = "GoSkiing_GameRecord_${System.currentTimeMillis()}.mp4"
+                val resolver = app.contentResolver
+                // PART 1: Save standard simulated mp4 file
+                val videoName = "GoSkiing_GameRecord_${System.currentTimeMillis()}.mp4"
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val resolver = app.contentResolver
                     val contentValues = ContentValues().apply {
-                        put(MediaStore.Video.Media.DISPLAY_NAME, finalName)
+                        put(MediaStore.Video.Media.DISPLAY_NAME, videoName)
                         put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
                         put(MediaStore.Video.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
                         put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/GoSkiing")
@@ -471,19 +482,137 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     uri?.let {
                         val outputStream: OutputStream? = resolver.openOutputStream(it)
                         outputStream?.use { out ->
-                            // Put a mock video header block or short binary signature so file works as gameplay!
                             out.write("MP4_SIMULATED_SCREEN_RECORDING_GO_SKIING_GAMEPLAY".toByteArray())
                         }
                         contentValues.clear()
                         contentValues.put(MediaStore.Video.Media.IS_PENDING, 0)
                         resolver.update(it, contentValues, null, null)
-                        Log.i("ScreenRecorder", "Simulated record saved successfully: $uri")
+                        Log.i("ScreenRecorder", "Simulated record saved: $uri")
                     }
-                } else {
-                    Log.i("ScreenRecorder", "Legacy Android, simulated screen recorder complete.")
+                }
+
+                // PART 2: Save GORGEOUS visual souvenir memory card directly to native Photos/Gallery!
+                val width = 720
+                val height = 1080
+                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                val canvas = AndroidCanvas(bitmap)
+
+                // Fill deep ski twilight background
+                val bgPaint = Paint().apply { isAntiAlias = true }
+                val bgShader = LinearGradient(0f, 0f, 0f, height.toFloat(),
+                    android.graphics.Color.parseColor("#0F2027"),
+                    android.graphics.Color.parseColor("#2C5364"),
+                    Shader.TileMode.CLAMP
+                )
+                bgPaint.shader = bgShader
+                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
+                bgPaint.shader = null
+
+                // Draw white dynamic snow hills
+                bgPaint.color = android.graphics.Color.WHITE
+                val path1 = android.graphics.Path().apply {
+                    moveTo(0f, height * 0.72f)
+                    quadTo(width * 0.35f, height * 0.65f, width * 0.75f, height * 0.78f)
+                    lineTo(width.toFloat(), height * 0.7f)
+                    lineTo(width.toFloat(), height.toFloat())
+                    lineTo(0f, height.toFloat())
+                    close()
+                }
+                canvas.drawPath(path1, bgPaint)
+
+                bgPaint.color = android.graphics.Color.parseColor("#E0F7FA")
+                val path2 = android.graphics.Path().apply {
+                    moveTo(0f, height * 0.82f)
+                    quadTo(width * 0.5f, height * 0.86f, width.toFloat(), height * 0.8f)
+                    lineTo(width.toFloat(), height.toFloat())
+                    lineTo(0f, height.toFloat())
+                    close()
+                }
+                canvas.drawPath(path2, bgPaint)
+
+                // Gold Border Frame
+                val framePaint = Paint().apply {
+                    isAntiAlias = true
+                    color = android.graphics.Color.parseColor("#FFD700")
+                    style = Paint.Style.STROKE
+                    strokeWidth = 16f
+                }
+                canvas.drawRoundRect(RectF(30f, 30f, width - 30f, height - 30f), 32f, 32f, framePaint)
+
+                // Title Header
+                val textPaint = Paint().apply {
+                    isAntiAlias = true
+                    color = android.graphics.Color.WHITE
+                    textSize = 54f
+                    isFakeBoldText = true
+                    textAlign = Paint.Align.CENTER
+                }
+                canvas.drawText("GO SKIING RUN MEMORY", width / 2f, 150f, textPaint)
+
+                textPaint.textSize = 30f
+                textPaint.color = android.graphics.Color.parseColor("#FF647C")
+                canvas.drawText("● SCREEN RECORDER HIGHLIGHT", width / 2f, 210f, textPaint)
+
+                // Stats Inner Box
+                val boxPaint = Paint().apply {
+                    isAntiAlias = true
+                    color = android.graphics.Color.parseColor("#CC1E3541")
+                    style = Paint.Style.FILL
+                }
+                canvas.drawRoundRect(RectF(80f, 280f, width - 80f, 580f), 24f, 24f, boxPaint)
+
+                // Stats Text lines
+                textPaint.textAlign = Paint.Align.LEFT
+                textPaint.textSize = 34f
+                textPaint.color = android.graphics.Color.parseColor("#B0BEC5")
+                canvas.drawText("RIDER:", 130f, 360f, textPaint)
+                textPaint.color = android.graphics.Color.WHITE
+                textPaint.textSize = 40f
+                canvas.drawText(playerNameVal, 320f, 360f, textPaint)
+
+                textPaint.textSize = 34f
+                textPaint.color = android.graphics.Color.parseColor("#B0BEC5")
+                canvas.drawText("COINS:", 130f, 440f, textPaint)
+                textPaint.color = android.graphics.Color.parseColor("#FFD54F")
+                textPaint.textSize = 40f
+                canvas.drawText("$finalCoins ⭐", 320f, 440f, textPaint)
+
+                textPaint.textSize = 34f
+                textPaint.color = android.graphics.Color.parseColor("#B0BEC5")
+                canvas.drawText("DURATION:", 130f, 520f, textPaint)
+                textPaint.color = android.graphics.Color.parseColor("#26C6DA")
+                textPaint.textSize = 40f
+                canvas.drawText("$finalDur SEC", 320f, 520f, textPaint)
+
+                // Footer credits
+                textPaint.color = android.graphics.Color.LTGRAY
+                textPaint.textSize = 28f
+                textPaint.textAlign = Paint.Align.CENTER
+                canvas.drawText("Peak Record Saved to Photos Gallery", width / 2f, 980f, textPaint)
+
+                // Save PNG visual card to MediaStore image gallery
+                val pngName = "GoSkiing_RecCard_${System.currentTimeMillis()}.png"
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.Images.Media.DISPLAY_NAME, pngName)
+                        put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                        put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/GoSkiing")
+                        put(MediaStore.Images.Media.IS_PENDING, 1)
+                    }
+                    val imgUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                    imgUri?.let { uri ->
+                        val os: OutputStream? = resolver.openOutputStream(uri)
+                        os?.use { out ->
+                            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                        }
+                        contentValues.clear()
+                        contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
+                        resolver.update(uri, contentValues, null, null)
+                        Log.i("ScreenRecorder", "Keepsake image card saved: $uri")
+                    }
                 }
             } catch (e: Exception) {
-                Log.e("ScreenRecorder", "Failed saving gameplay recording", e)
+                Log.e("ScreenRecorder", "Failed saving screenshot highlights card", e)
             }
         }
     }

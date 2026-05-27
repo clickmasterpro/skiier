@@ -45,6 +45,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 
 @Composable
 fun MainGameApp(viewModel: GameViewModel) {
@@ -666,6 +670,10 @@ fun ActiveGameScreen(viewModel: GameViewModel) {
     // Listeners for tilt sensors
     TiltSensorHandler(viewModel)
 
+    val skierBitmap = ImageBitmap.imageResource(id = com.example.R.drawable.img_skier)
+    val coinBitmap = ImageBitmap.imageResource(id = com.example.R.drawable.img_coin)
+    val treeBitmap = ImageBitmap.imageResource(id = com.example.R.drawable.img_tree)
+
     val playerName by viewModel.playerName.collectAsStateWithLifecycle()
     val coinsCollected by viewModel.coinsCollected.collectAsStateWithLifecycle()
     val durationSeconds by viewModel.elapsedSeconds.collectAsStateWithLifecycle()
@@ -750,7 +758,7 @@ fun ActiveGameScreen(viewModel: GameViewModel) {
         MountainBackgroundCanvas()
 
         // LAYER 2: SCROLLING BACKDROP SEAMLESS PINE TREES RENDER
-        TreesScrollingLayer(treesOffsetValue)
+        TreesScrollingLayer(treesOffsetValue, treeBitmap)
 
         // LAYER 3: DYNAMIC WHITE SLOPE & ACTIVE GAME ITEMS
         GameDynamicsSlopeCanvas(
@@ -759,7 +767,9 @@ fun ActiveGameScreen(viewModel: GameViewModel) {
             selectedColor = if (invincible) Color.Black else jacketColor,
             isInvincibleMode = invincible,
             obstacles = obstacles,
-            coins = coins
+            coins = coins,
+            skierBitmap = skierBitmap,
+            coinBitmap = coinBitmap
         )
 
         // SCREEN RECORDING HUD INDICATOR (Flashing RED REC button)
@@ -1196,7 +1206,7 @@ fun MountainBackgroundCanvas() {
 }
 
 @Composable
-fun TreesScrollingLayer(treesOffset: Float) {
+fun TreesScrollingLayer(treesOffset: Float, treeBitmap: ImageBitmap) {
     Canvas(modifier = Modifier.fillMaxSize()) {
         val w = size.width
         val h = size.height
@@ -1210,42 +1220,20 @@ fun TreesScrollingLayer(treesOffset: Float) {
         for (i in -1..totalNeeded) {
             val baseTreeX = (i * treeSpacing) - treesOffset
             // Only draw if within reasonable horizontal bounds
-            if (baseTreeX > -100f && baseTreeX < w + 100f) {
-                // Dynamic slight height variation for added rustic style
-                val treeHeight = 70f
-                val treeWidth = 40f
+            if (baseTreeX > -150f && baseTreeX < w + 150f) {
                 val rootY = groundY + (i % 3) * 12f // slightly tiered
 
-                // Draw standard Christmas stylized WSC green trees using vectors drawing
-                val treeColor = if (i % 2 == 0) Color(0xFF00695C) else Color(0xFF00796B)
-                drawPath(
-                    path = Path().apply {
-                        // Level 3 (Top tier)
-                        moveTo(baseTreeX, rootY - treeHeight)
-                        lineTo(baseTreeX - (treeWidth * 0.3f), rootY - (treeHeight * 0.6f))
-                        lineTo(baseTreeX + (treeWidth * 0.3f), rootY - (treeHeight * 0.6f))
-                        close()
+                // Draw the generated retro pixel tree PNG!
+                val dstWidth = 60.dp.toPx()
+                val dstHeight = 100.dp.toPx()
 
-                        // Level 2 (Mid tier)
-                        moveTo(baseTreeX, rootY - (treeHeight * 0.7f))
-                        lineTo(baseTreeX - (treeWidth * 0.45f), rootY - (treeHeight * 0.3f))
-                        lineTo(baseTreeX + (treeWidth * 0.45f), rootY - (treeHeight * 0.3f))
-                        close()
-
-                        // Level 1 (Bottom tier)
-                        moveTo(baseTreeX, rootY - (treeHeight * 0.4f))
-                        lineTo(baseTreeX - (treeWidth * 0.6f), rootY)
-                        lineTo(baseTreeX + (treeWidth * 0.6f), rootY)
-                        close()
-                    },
-                    color = treeColor
-                )
-
-                // Trunk
-                drawRect(
-                    color = Color(0xFF3E2723),
-                    topLeft = Offset(baseTreeX - 4f, rootY),
-                    size = Size(8f, 12f)
+                drawImage(
+                    image = treeBitmap,
+                    dstOffset = IntOffset(
+                        (baseTreeX - dstWidth / 2f).toInt(),
+                        (rootY - dstHeight).toInt()
+                    ),
+                    dstSize = IntSize(dstWidth.toInt(), dstHeight.toInt())
                 )
             }
         }
@@ -1259,7 +1247,9 @@ fun GameDynamicsSlopeCanvas(
     selectedColor: Color,
     isInvincibleMode: Boolean,
     obstacles: List<Obstacle>,
-    coins: List<Coin>
+    coins: List<Coin>,
+    skierBitmap: ImageBitmap,
+    coinBitmap: ImageBitmap
 ) {
     val context = LocalContext.current
     Canvas(modifier = Modifier.fillMaxSize()) {
@@ -1287,30 +1277,20 @@ fun GameDynamicsSlopeCanvas(
                 color = Color.White
             )
 
-            // Draw active rolling Coins along slope
+            // Draw active rolling Coins along slope using coinBitmap!
             coins.forEach { coin ->
                 val cxPx = coin.x.dp.toPx()
                 val cyPx = groundY - 14.dp.toPx() // roll right on snow
 
-                // outer shiny gold ring
-                drawCircle(
-                    color = Color(0xFFFFD54F),
-                    radius = coin.radiusDp.dp.toPx(),
-                    center = Offset(cxPx, cyPx)
-                )
+                val coinSizePx = (coin.radiusDp * 2.2f).dp.toPx()
 
-                // Inner core with retro star visual symbol
-                drawCircle(
-                    color = Color(0xFFFFA000),
-                    radius = (coin.radiusDp * 0.65f).dp.toPx(),
-                    center = Offset(cxPx, cyPx)
-                )
-
-                // High-visibility dot shine
-                drawCircle(
-                    color = Color.White,
-                    radius = 3.dp.toPx(),
-                    center = Offset(cxPx - 3.dp.toPx(), cyPx - 3.dp.toPx())
+                drawImage(
+                    image = coinBitmap,
+                    dstOffset = IntOffset(
+                        (cxPx - coinSizePx / 2f).toInt(),
+                        (cyPx - coinSizePx / 2f).toInt()
+                    ),
+                    dstSize = IntSize(coinSizePx.toInt(), coinSizePx.toInt())
                 )
             }
 
@@ -1349,72 +1329,32 @@ fun GameDynamicsSlopeCanvas(
                 )
             }
 
-            // Draw skier programmatically on top of current slope
+            // Draw skier on top of current slope using skierBitmap!
             // Skier is raised by jumpY vertical units
             val skierYpx = groundY - jumpY.dp.toPx()
 
             withTransform({
                 translate(skierXpx, skierYpx)
             }) {
-                // Skis (thick black angled strokes)
-                drawLine(
-                    color = Color.Black,
-                    start = Offset(-25f, -1f),
-                    end = Offset(25f, -5f),
-                    strokeWidth = 6f,
-                    cap = StrokeCap.Round
-                )
+                val skierWidthPx = 54.dp.toPx()
+                val skierHeightPx = 64.dp.toPx()
 
-                // Legs & Boots
-                drawLine(
-                    color = Color.Black,
-                    start = Offset(0f, -4f),
-                    end = Offset(-4f, -15f),
-                    strokeWidth = 5f
-                )
+                // Draw neon invincibility aura under player
+                if (isInvincibleMode) {
+                    drawCircle(
+                        color = Color.Yellow.copy(alpha = 0.5f),
+                        radius = 28.dp.toPx(),
+                        center = Offset(0f, -skierHeightPx / 2f)
+                    )
+                }
 
-                // Ski Jacket Body silhouette - programmatically toggled colors!
-                drawPath(
-                    path = Path().apply {
-                        moveTo(-4f, -15f)
-                        lineTo(4f, -35f)
-                        lineTo(-12f, -28f)
-                        close()
-                    },
-                    color = selectedColor
-                )
-
-                // Arms & Poles leaning
-                drawLine(
-                    color = Color.Black,
-                    start = Offset(-8f, -30f),
-                    end = Offset(0f, -18f),
-                    strokeWidth = 4f
-                )
-                // Pole line hitting slope for cool physics feel
-                drawLine(
-                    color = Color.DarkGray,
-                    start = Offset(-22f, 6f),
-                    end = Offset(6f, -32f),
-                    strokeWidth = 2.5f
-                )
-
-                // Head Helmet (solid sphere)
-                drawCircle(
-                    color = Color.DarkGray,
-                    radius = 8.5f,
-                    center = Offset(-12f, -35f)
-                )
-
-                // Google details (changes to glowing gold if invincible, neon green by default)
-                drawArc(
-                    color = if (isInvincibleMode) Color.Yellow else Color(0xFF00E676),
-                    startAngle = -45f,
-                    sweepAngle = 90f,
-                    useCenter = false,
-                    style = Stroke(width = 3.5f),
-                    size = Size(11f, 11f),
-                    topLeft = Offset(-18f, -40f)
+                drawImage(
+                    image = skierBitmap,
+                    dstOffset = IntOffset(
+                        (-skierWidthPx / 2f).toInt(),
+                        (-skierHeightPx).toInt()
+                    ),
+                    dstSize = IntSize(skierWidthPx.toInt(), skierHeightPx.toInt())
                 )
             }
         }
